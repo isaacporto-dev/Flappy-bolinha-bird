@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Flappy Bird Completo</title>
+<style>
+body {
+    margin: 0;
+    background: #70c5ce;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+canvas {
+    display: block;
+    margin: auto;
+    background: #70c5ce;
+    border: 3px solid #000;
+}
+button, select, input {
+    padding: 8px;
+    font-size: 14px;
+    margin: 5px;
+}
+#shop {
+    display: none;
+    background: rgba(255,255,255,0.95);
+    width: 300px;
+    margin: 10px auto;
+    padding: 10px;
+    border-radius: 10px;
+    border: 2px solid #000;
+}
+#admTrigger {
+    width: 30px;
+    height: 4px;
+    background: red;
+    margin: 8px auto;
+    cursor: pointer;
+}
+#admPanel {
+    display: none;
+    margin-top: 10px;
+    padding: 8px;
+    background: #222;
+    color: #fff;
+    border-radius: 8px;
+}
+</style>
+</head>
+<body>
+
+<h2>🐦 Flappy Bird</h2>
+<canvas id="game" width="360" height="480"></canvas>
+
+<div id="menu">
+    <p id="info"></p>
+    <button onclick="startGame()">JOGAR</button>
+    <button onclick="toggleShop()">🛒 LOJA</button>
+
+    <div id="shop">
+        <strong>Loja de Skins</strong><br><br>
+        <select id="skinShop"></select><br>
+        <button onclick="buySkin()">COMPRAR / USAR</button>
+
+        <div id="admTrigger" onclick="toggleAdm()"></div>
+
+        <div id="admPanel">
+            <strong>ADM</strong><br>
+            <input id="admCode" placeholder="Digite qualquer coisa"><br>
+            <button onclick="useAdmCode()">ATIVAR</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let bird, pipes, score, gameOver;
+
+// 🐦 FÍSICA SUPER LEVE
+let gravity = 0.18;
+let jumpForce = -4.8;
+let maxFallSpeed = 3;
+let gap = 130;
+
+// 😈 MODOS ADM
+let modGod = false;
+let noPipes = false;
+let infiniteMoney = false;
+
+// DADOS
+let record = Number(localStorage.getItem("record")) || 0;
+let money = Number(localStorage.getItem("money")) || 0;
+let ownedSkins = JSON.parse(localStorage.getItem("skins")) || ["yellow"];
+let currentSkin = localStorage.getItem("currentSkin") || "yellow";
+
+const skins = {
+    yellow: { color: "#FFD700", price: 0 },
+    red: { color: "#FF4444", price: 20 },
+    blue: { color: "#4488FF", price: 40 },
+    green: { color: "#44CC66", price: 60 },
+    purple: { color: "#AA55FF", price: 100 }
+};
+
+function toggleShop() {
+    shop.style.display = shop.style.display === "none" ? "block" : "none";
+}
+function toggleAdm() {
+    admPanel.style.display = admPanel.style.display === "none" ? "block" : "none";
+}
+
+function updateMenu() {
+    info.innerHTML =
+        `💰 ${infiniteMoney ? "∞" : money} | 🏆 ${record} | 🚫 CANOS: ${noPipes ? "OFF" : "ON"}`;
+    skinShop.innerHTML = "";
+
+    for (let s in skins) {
+        let opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = ownedSkins.includes(s)
+            ? `${s.toUpperCase()} ✔`
+            : `${s.toUpperCase()} - ${skins[s].price}💰`;
+        skinShop.appendChild(opt);
+    }
+
+    if (!ownedSkins.includes(currentSkin)) currentSkin = ownedSkins[0];
+    skinShop.value = currentSkin;
+}
+
+function buySkin() {
+    const skin = skinShop.value;
+
+    if (!ownedSkins.includes(skin)) {
+        if (!infiniteMoney) money -= skins[skin].price;
+        ownedSkins.push(skin);
+    }
+
+    currentSkin = skin;
+    saveData();
+    updateMenu();
+}
+
+/* 😈 QUALQUER CÓDIGO ATIVA TUDO */
+function useAdmCode() {
+    admCode.value = "";
+
+    modGod = !modGod;
+    noPipes = !noPipes;
+    infiniteMoney = !infiniteMoney;
+
+    if (infiniteMoney) money = 999999;
+
+    // SET FINAL (vitória instantânea)
+    score = 999;
+    endGame();
+
+    saveData();
+    updateMenu();
+}
+
+function saveData() {
+    localStorage.setItem("record", record);
+    localStorage.setItem("money", money);
+    localStorage.setItem("skins", JSON.stringify(ownedSkins));
+    localStorage.setItem("currentSkin", currentSkin);
+}
+
+function startGame() {
+    bird = { x: 80, y: 200, vy: 0 };
+    pipes = [createPipe()];
+    score = 0;
+    gameOver = false;
+    requestAnimationFrame(update);
+}
+
+function createPipe() {
+    let top = Math.random() * 200 + 50;
+    return { x: canvas.width, top, bottom: canvas.height - top - gap, passed: false };
+}
+
+function drawBird() {
+    ctx.save();
+    ctx.translate(bird.x, bird.y);
+    ctx.fillStyle = skins[currentSkin].color;
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 13, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(-6, 1, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(4, -3, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "orange";
+    ctx.beginPath();
+    ctx.moveTo(13, -2);
+    ctx.lineTo(20, 0);
+    ctx.lineTo(13, 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function update() {
+    if (gameOver) return;
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    bird.vy += gravity;
+    if (bird.vy > maxFallSpeed) bird.vy = maxFallSpeed;
+    bird.y += bird.vy;
+
+    drawBird();
+
+    if (!noPipes) {
+        for (let p of pipes) {
+            p.x -= 2;
+            ctx.fillStyle = "green";
+            ctx.fillRect(p.x,0,40,p.top);
+            ctx.fillRect(p.x,canvas.height-p.bottom,40,p.bottom);
+
+            if (!modGod &&
+                bird.x+13>p.x && bird.x-13<p.x+40 &&
+                (bird.y-9<p.top || bird.y+9>canvas.height-p.bottom)
+            ) gameOver = true;
+
+            if (!p.passed && p.x+40<bird.x) {
+                score++;
+                p.passed = true;
+            }
+        }
+
+        if (pipes[pipes.length-1].x < 180) pipes.push(createPipe());
+        if (pipes[0].x < -40) pipes.shift();
+    }
+
+    if (!modGod && (bird.y < 0 || bird.y > canvas.height)) gameOver = true;
+
+    ctx.fillStyle="#000";
+    ctx.font="20px Arial";
+    ctx.fillText("Pontos: "+score,10,30);
+
+    requestAnimationFrame(update);
+}
+
+function endGame() {
+    gameOver = true;
+
+    if (!infiniteMoney) money += score;
+    if (score > record) record = score;
+
+    saveData();
+    updateMenu();
+
+    ctx.fillStyle="rgba(0,0,0,0.6)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#fff";
+    ctx.font="24px Arial";
+    ctx.fillText("FINAL CONCLUÍDO",70,220);
+    ctx.fillText("Pontos: "+score,110,260);
+}
+
+document.addEventListener("keydown",()=>bird&&(bird.vy=jumpForce));
+canvas.addEventListener("click",()=>bird&&(bird.vy=jumpForce));
+
+updateMenu();
+</script>
+</body>
+  </html>
